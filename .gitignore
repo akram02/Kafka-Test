@@ -35,4 +35,6 @@ out/
 
 ### VS Code ###
 .vscode/
+*.jar
 /docker/kafka.jar
+/docker/*.jar
