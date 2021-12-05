@@ -14,6 +14,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -21,13 +22,13 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 @RestController
-@RequestMapping("/api/test-kafka")
+@RequestMapping("/kafka")
 public class KafkaResource {
 
     private final Logger log = LoggerFactory.getLogger(KafkaResource.class);
 
     private final KafkaProperties kafkaProperties;
-    private KafkaProducer<String, String> producer;
+    private KafkaProducer<String, GroupNotification> producer;
     private ExecutorService sseExecutorService = Executors.newCachedThreadPool();
 
     public KafkaResource(KafkaProperties kafkaProperties) {
@@ -36,10 +37,15 @@ public class KafkaResource {
     }
 
     @PostMapping("/publish/{topic}")
-    public PublishResult publish(@PathVariable String topic, @RequestParam String message, @RequestParam(required = false) String key)
+    public PublishResult publish(@PathVariable String topic, @RequestParam String message, @RequestParam Double quantity, @RequestParam(required = false) String key)
         throws ExecutionException, InterruptedException {
         log.debug("REST request to send to Kafka topic {} with key {} the message : {}", topic, key, message);
-        RecordMetadata metadata = producer.send(new ProducerRecord<>(topic, key, message)).get();
+        var mvm = new UpdatedGroup(message, quantity);
+        var notificationVM = new GroupNotification();
+        notificationVM.setTime(System.currentTimeMillis());
+        notificationVM.setGroupList(Collections.singletonList(mvm));
+        notificationVM.setType("group_buying_product_update");
+        RecordMetadata metadata = producer.send(new ProducerRecord<>(topic, key, notificationVM)).get();
         return new PublishResult(metadata.topic(), metadata.partition(), metadata.offset(), Instant.ofEpochMilli(metadata.timestamp()));
     }
 
@@ -50,6 +56,18 @@ public class KafkaResource {
         consumerProps.putAll(consumerParams);
         consumerProps.remove("topic");
 
+        return getSseEmitter(topics, consumerProps);
+    }
+
+    @GetMapping("/notification/consume")
+    public SseEmitter consumeNotification(@RequestHeader HttpHeaders headers) {
+        log.debug("REST request to consume notification records from Kafka topics {}", headers);
+        Map<String, Object> consumerProps = kafkaProperties.getConsumerProps();
+
+        return getSseEmitter(Collections.singletonList("Akram"), consumerProps);
+    }
+
+    private SseEmitter getSseEmitter(List<String> topics, Map<String, Object> consumerProps) {
         SseEmitter emitter = new SseEmitter(0L);
         sseExecutorService.execute(() -> {
             KafkaConsumer<String, String> consumer = new KafkaConsumer<>(consumerProps);
