@@ -36,7 +36,7 @@ public class KafkaResource {
         this.producer = new KafkaProducer<>(kafkaProperties.getProducerProps());
     }
 
-    @PostMapping("/publish/{topic}")
+    @GetMapping("/publish/{topic}")
     public PublishResult publish(@PathVariable String topic, @RequestParam String message, @RequestParam Double quantity, @RequestParam(required = false) String key)
         throws ExecutionException, InterruptedException {
         log.debug("REST request to send to Kafka topic {} with key {} the message : {}", topic, key, message);
